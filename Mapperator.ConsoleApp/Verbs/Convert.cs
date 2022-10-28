@@ -39,6 +39,9 @@ public static class Convert {
 
         [Option('a', "sliderAngles", HelpText = "Optimize slider angles", Default = false)]
         public bool SliderAngles { get; [UsedImplicitly] set; }
+
+        [Option('r', "rescaleFactor", HelpText = "Rescale distance and SVs", Default = 1.0)]
+        public double RescaleFactor { get; [UsedImplicitly] set; }
     }
 
     public static int DoMapConvert(ConvertOptions opts) {
@@ -61,11 +64,14 @@ public static class Convert {
         // TODO: add post-processing filters for fixing overlaps, stacks, and slider angles
         // TODO: encourage better stream angles by removing pog bonus on NC
         // Change spacing distribution
-        if (opts.SpacingBeatmapPath is not null) {
+        if (opts.SpacingBeatmapPath is not null || opts.RescaleFactor != 1.0) {
+            if (opts.RescaleFactor != 1.0 && opts.SpacingBeatmapPath is null) {
+                opts.SpacingBeatmapPath = opts.InputBeatmapPath;
+            }
             Console.WriteLine(Strings.Program_DoMapConvert_Converting_spacing_to_reference_beatmap___);
             var spacingMap = new BeatmapEditor(Path.ChangeExtension(opts.SpacingBeatmapPath, ".osu")).ReadFile();
             var spacingMapData = new DataExtractor().ExtractBeatmapData(spacingMap).ToArray();
-            input = TransferSpacing(spacingMapData, input);
+            input = TransferSpacing(spacingMapData, input, opts.RescaleFactor);
         }
 
         // Add the data to the matcher or load the data
@@ -113,18 +119,18 @@ public static class Convert {
         return 0;
     }
 
-    private static MapDataPoint[] TransferSpacing(MapDataPoint[] from, MapDataPoint[] to) {
+    private static MapDataPoint[] TransferSpacing(MapDataPoint[] from, MapDataPoint[] to, double rescaleFactor = 1.0) {
         var spacingData = new double[9][];
         var groupedByBeats = from.GroupBy(o => MathHelper.Clamp((int) Math.Round(Math.Log2(o.BeatsSince) + 6), 0, 8));
         foreach (var group in groupedByBeats) {
-            var arr = group.OrderBy(o => o.Spacing).Select(o => o.Spacing).ToArray();
+            var arr = group.OrderBy(o => o.Spacing).Select(o => (o.Spacing * rescaleFactor)).ToArray();
             spacingData[group.Key] = arr;
         }
         var sliderSpacingData = new double[9][];
         var sliderGroupedByBeats = from.Where(o => o.SliderLength.HasValue)
             .GroupBy(o => MathHelper.Clamp((int) Math.Round(Math.Log2(o.BeatsSince) + 6), 0, 8));
         foreach (var group in sliderGroupedByBeats) {
-            var arr = group.OrderBy(o => o.SliderLength).Select(o => o.SliderLength!.Value).ToArray();
+            var arr = group.OrderBy(o => o.SliderLength).Select(o => (o.SliderLength * rescaleFactor)!.Value).ToArray();
             sliderSpacingData[group.Key] = arr;
         }
 
